@@ -1,0 +1,32 @@
+name: stackfar
+title: Stackfar - Local copy of StackExchange
+base: core18
+version: '0.0.1'
+summary: Stackfar is an offline version of any of your favorite stackexchange websites.
+description: |
+  Stackfar is an offline version of any stackexchange website. It will download latest datadumps automatically. It's still very much in alpha.
+confinement: strict
+grade: devel
+
+
+apps:
+  syncer:
+    command: syncer
+    daemon: simple
+    plugs: [network]
+
+
+parts:
+  syncer:
+    source: .
+    plugin: dump
+    stage: 
+      - bin
+      - etc
+      - lib
+      - template
+      - usr
+      - var
+    stage-packages:
+      - rsync 
+

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+resync_sites() {
+    export STACKFAR_SITES="$(snapctl get sites)"
+
+    for domain in ${STACKFAR_SITES//,/ }
+    do
+        if [ -z "$domain" ]
+        then
+            continue
+        fi
+        mkdir -p $SNAP_COMMON/streams/$domain
+        rsync -azh rsync://so.gearfar.com/stream-data/$domain $SNAP_COMMON/streams
+    done
+
+    delay="$(snapctl get resync-delay)"
+    if [ -z "$delay" ]
+    then
+        delay=85000
+    fi
+    sleep $delay
+}
+
+while ( true ) 
+    do resync_sites
+done
