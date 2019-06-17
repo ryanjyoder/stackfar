@@ -10,6 +10,10 @@ grade: devel
 
 
 apps:
+  webserver:
+    command: webserver
+    daemon: simple
+    plugs: [network-bind]
   syncer:
     command: syncer
     daemon: simple
@@ -17,6 +21,19 @@ apps:
 
 
 parts:
+  webserver:
+    source: .
+    plugin: go
+    go-packages: ["github.com/ryanjyoder/stackfar/cmd/templater"]
+    build-packages:
+      - git
+    override-build: |
+      export GO111MODULE=on
+      go build cmd/templater/templater.go
+      mkdir -p $SNAPCRAFT_PART_INSTALL/bin/
+      cp templater $SNAPCRAFT_PART_INSTALL/bin/
+    stage: [bin/templater]
+
   syncer:
     source: .
     plugin: dump

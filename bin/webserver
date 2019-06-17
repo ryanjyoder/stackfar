@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+export TEMPLATE_DIR=$SNAP/template
+export STREAMS_DIR=$SNAP_COMMON/streams
+
+export LISTEN_PORT="$(snapctl get port)"
+ if [ -z "$LISTEN_PORT" ]
+    then
+        export LISTEN_PORT=80
+fi
+
+$SNAP/bin/templater
