@@ -1,65 +1,45 @@
-package main
+package stackfar
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/ryanjyoder/sofp"
 )
 
-func main() {
-	var err error
-	templateDir, ok := os.LookupEnv("TEMPLATE_DIR")
-	if !ok {
-		log.Fatal("TEMPLATE_DIR must be set")
-	}
-
-	streamsDir, ok := os.LookupEnv("STREAMS_DIR")
-	if !ok {
-		log.Fatal("STREAMS_DIR must be set")
-	}
-
-	listenPort, ok := os.LookupEnv("LISTEN_PORT")
-	if !ok {
-		log.Fatal("LISTEN_PORT must be set")
-	}
-
-	handler, err := NewStackfarHandler(streamsDir, templateDir)
-	if err != nil {
-		log.Fatal("failed to create handler:", err)
-	}
-	http.HandleFunc("/", handler.viewHandler)
-	log.Fatal(http.ListenAndServe(":"+listenPort, nil))
-}
-
-type StackfarHandler struct {
-	streamsDir   string
+type WebServer struct {
+	streamStores map[string]*StreamStore
 	templateDir  string
 	pageTemplate *template.Template
+	bindAddress  string
 }
 
-func NewStackfarHandler(streamsDir string, templateDir string) (*StackfarHandler, error) {
+func NewWebServer(streamsStores map[string]*StreamStore, templateDir string, bindAddress string) (*WebServer, error) {
 	pageTemplateFilepath := filepath.Join(templateDir, "stackoverflow.html")
 	pageTemplate, err := template.ParseFiles(pageTemplateFilepath)
 	if err != nil {
 		return nil, err
 	}
 
-	return &StackfarHandler{
-		streamsDir:   streamsDir,
+	return &WebServer{
+		streamStores: streamsStores,
 		templateDir:  templateDir,
 		pageTemplate: pageTemplate,
+		bindAddress:  bindAddress,
 	}, nil
 }
 
-func (h *StackfarHandler) viewHandler(w http.ResponseWriter, r *http.Request) {
+func (h *WebServer) ListenAndServer() error {
+
+	http.HandleFunc("/", h.viewHandler)
+	return http.ListenAndServe(h.bindAddress, nil)
+}
+
+func (h *WebServer) viewHandler(w http.ResponseWriter, r *http.Request) {
 	tokens := strings.Split(r.URL.Path, "/")
 	if len(tokens) < 3 {
 		log.Println("url path incorrectly formatted:", r.URL.Path)
@@ -99,7 +79,7 @@ func (h *StackfarHandler) viewHandler(w http.ResponseWriter, r *http.Request) {
 	h.pageTemplate.Execute(w, p)
 }
 
-func (h *StackfarHandler) assetHandler(w http.ResponseWriter, r *http.Request) {
+func (h *WebServer) assetHandler(w http.ResponseWriter, r *http.Request) {
 	pathParts := strings.Split(r.URL.Path, "/assets/")
 	if len(pathParts) < 2 {
 		log.Println("url path incorrectly formatted:", r.URL.Path)
@@ -112,39 +92,26 @@ func (h *StackfarHandler) assetHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (h *StackfarHandler) loadPage(domain string, id string) (*sofp.Question, error) {
-	if len(id) < 1 {
-		return nil, fmt.Errorf("id must not be empty")
+func (h *WebServer) loadPage(domain string, id string) (*sofp.Question, error) {
+	store, ok := h.streamStores[domain]
+	if !ok {
+		return nil, fmt.Errorf("domain not found")
 	}
-	subdir := ("000" + id)[len(id):]
-	filepath := filepath.Join(h.streamsDir, domain, subdir, id)
 
-	file, err := os.Open(filepath)
+	deltas, err := store.GetStreamDeltas(domain, id)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-
 	question := &sofp.Question{
 		Body: template.HTML("under construction"),
 	}
-	for scanner.Scan() {
-		rowStr := scanner.Text()
-		row := sofp.Row{}
-		err = json.Unmarshal([]byte(rowStr), &row)
-		if err != nil {
-			return nil, err
-		}
-		err = question.AppendRow(&row)
+
+	for i := range deltas {
+		err = question.AppendRow(deltas[i])
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
 	return question, nil
 }

@@ -9,4 +9,4 @@ export LISTEN_PORT="$(snapctl get port)"
         export LISTEN_PORT=80
 fi
 
-$SNAP/bin/templater
+$SNAP/bin/webserver

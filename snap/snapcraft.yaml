@@ -11,7 +11,7 @@ grade: devel
 
 apps:
   webserver:
-    command: webserver
+    command: run_webserver
     daemon: simple
     plugs: [network-bind]
   syncer:
@@ -24,15 +24,15 @@ parts:
   webserver:
     source: .
     plugin: go
-    go-packages: ["github.com/ryanjyoder/stackfar/cmd/templater"]
+    go-packages: ["github.com/ryanjyoder/stackfar/cmd/webserver"]
     build-packages:
       - git
     override-build: |
       export GO111MODULE=on
-      go build cmd/templater/templater.go
+      go build cmd/webserver/webserver.go
       mkdir -p $SNAPCRAFT_PART_INSTALL/bin/
-      cp templater $SNAPCRAFT_PART_INSTALL/bin/
-    stage: [bin/templater]
+      cp webserver $SNAPCRAFT_PART_INSTALL/bin/
+    stage: [bin/webserver]
 
   syncer:
     source: .
