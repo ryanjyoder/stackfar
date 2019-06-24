@@ -5,10 +5,10 @@
         <title>{{.Title}} - Stack Overflow</title>
 
 
-    <link rel="stylesheet" type="text/css" href="assets/stacks.css">
-    <link rel="stylesheet" type="text/css" href="assets/primary.css">
+    <link rel="stylesheet" type="text/css" href="/assets/stacks.css">
+    <link rel="stylesheet" type="text/css" href="/assets/primary.css">
 
-    <link rel="stylesheet" href="assets/clc.css" type="text/css"><script async="" src="assets/full.js"></script><link rel="preload" href="assets/integrator.js" as="script"><script type="text/javascript" src="assets/integrator.js"></script><script src="assets/pubads_impl_2019041801.js" async=""></script><script async="" src="assets/snippet-javascript.js"></script><script async="" src="assets/post-validation.js"></script><script async="" src="assets/prettify-full.js"></script><style id="style-1-cropbar-clipper">/* Copyright 2014 Evernote Corporation. All rights reserved. */
+    <link rel="stylesheet" href="/assets/clc.css" type="text/css"><script async="" src="/assets/full.js"></script><link rel="preload" href="/assets/integrator.js" as="script"><script type="text/javascript" src="/assets/integrator.js"></script><script src="/assets/pubads_impl_2019041801.js" async=""></script><script async="" src="/assets/snippet-javascript.js"></script><script async="" src="/assets/post-validation.js"></script><script async="" src="/assets/prettify-full.js"></script><style id="style-1-cropbar-clipper">/* Copyright 2014 Evernote Corporation. All rights reserved. */
 .en-markup-crop-options {
     top: 18px !important;
     left: 50% !important;
@@ -846,4 +846,4 @@ site design / logo © 2019 Stack Exchange Inc; user contributions licensed under
             
     
     
-<div class="adsbox" id="clc-abd" style="position: absolute; pointer-events: none;">&nbsp;</div><script src="assets/markup.js"></script></body></html>
+<div class="adsbox" id="clc-abd" style="position: absolute; pointer-events: none;">&nbsp;</div><script src="/assets/markup.js"></script></body></html>
