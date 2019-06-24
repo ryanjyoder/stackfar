@@ -2,7 +2,7 @@
 
 export TEMPLATE_DIR=$SNAP/template
 export STREAMS_DIR=$SNAP_COMMON/streams
-export STORAGE_DIR=$SNAP_COMMON/dbs
+export STORAGE_DIR=$SNAP_COMMON
 export STACKFAR_SITES="$(snapctl get sites)"
 
 export LISTEN_PORT="$(snapctl get port)"

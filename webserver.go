@@ -8,28 +8,36 @@ import (
 	"path/filepath"
 	"strings"
 
+	strip "github.com/grokify/html-strip-tags-go"
 	"github.com/ryanjyoder/sofp"
 )
 
 type WebServer struct {
-	streamStores map[string]*StreamStore
-	templateDir  string
-	pageTemplate *template.Template
-	bindAddress  string
+	streamStore    *StreamStore
+	templateDir    string
+	pageTemplate   *template.Template
+	searchTemplate *template.Template
+	bindAddress    string
 }
 
-func NewWebServer(streamsStores map[string]*StreamStore, templateDir string, bindAddress string) (*WebServer, error) {
-	pageTemplateFilepath := filepath.Join(templateDir, "stackoverflow.html")
+func NewWebServer(streamsStore *StreamStore, templateDir string, bindAddress string) (*WebServer, error) {
+	pageTemplateFilepath := filepath.Join(templateDir, "question.tpl")
 	pageTemplate, err := template.ParseFiles(pageTemplateFilepath)
+	if err != nil {
+		return nil, err
+	}
+	searchTemplateFilepath := filepath.Join(templateDir, "search.tpl")
+	searchTemplate, err := template.ParseFiles(searchTemplateFilepath)
 	if err != nil {
 		return nil, err
 	}
 
 	return &WebServer{
-		streamStores: streamsStores,
-		templateDir:  templateDir,
-		pageTemplate: pageTemplate,
-		bindAddress:  bindAddress,
+		streamStore:    streamsStore,
+		templateDir:    templateDir,
+		pageTemplate:   pageTemplate,
+		searchTemplate: searchTemplate,
+		bindAddress:    bindAddress,
 	}, nil
 }
 
@@ -40,8 +48,8 @@ func (h *WebServer) ListenAndServer() error {
 }
 
 func (h *WebServer) viewHandler(w http.ResponseWriter, r *http.Request) {
-	tokens := strings.Split(r.URL.Path, "/")
-	if len(tokens) < 3 {
+	tokens := strings.Split(strings.Split(r.URL.Path, "?")[0], "/")
+	if len(tokens) < 2 {
 		log.Println("url path incorrectly formatted:", r.URL.Path)
 		http.Error(w, "path incorrectly formated", 400)
 		return
@@ -49,27 +57,87 @@ func (h *WebServer) viewHandler(w http.ResponseWriter, r *http.Request) {
 
 	// assume the domain is redirected: https://askubuntu.com/questions/123
 	domain := strings.Split(r.Host, ":")[0]
-	questionID := tokens[2]
+	handler := tokens[1]
+	questionID := ""
+	if len(tokens) >= 3 {
+		questionID = tokens[2]
+	}
 
 	// if the domain is not redirect to this host the domain will be in the path, eg:  http://localhost/askubuntu.com/questions/123
-	if tokens[1] != "questions" {
-		if len(tokens) < 4 {
+	if handler != "questions" && handler != "assets" && handler != "search" {
+		if len(tokens) < 3 {
 			log.Println("url path incorrectly formatted:", r.URL.Path)
 			http.Error(w, "path incorrectly formated", 400)
 			return
 		}
 		domain = tokens[1]
-		questionID = tokens[3]
+		handler = tokens[2]
+		if len(tokens) >= 4 {
+			questionID = tokens[3]
+		}
 	}
-	if questionID == "assets" {
+	switch handler {
+	case "assets":
 		// oops actually an asset no a page
 		h.assetHandler(w, r)
 		return
 
+	case "question":
+		h.questionHandler(w, domain, questionID)
+
+	case "search":
+		h.searchHandler(w, r)
+
+	default:
+		http.Error(w, "path incorrect format", 400)
 	}
+}
+
+type Hit struct {
+	Title   string
+	Href    string
+	Summary string
+}
+type SearchResults struct {
+	Results []Hit
+	Query   string
+}
+
+func (h *WebServer) searchHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		http.Error(w, "query can't be empty", 400)
+	}
+	fmt.Println("searching for:", query)
+	results, err := h.streamStore.Search(query)
+	if err != nil {
+		http.Error(w, "internal server error:"+err.Error(), 500)
+	}
+
+	hits := make([]Hit, len(results.Hits))
+	for i, hit := range results.Hits {
+		hits[i].Title = fmt.Sprint(hit.Fields["Title"])
+		domain := strings.Split(hit.ID, "/")[0]
+		id := strings.Split(hit.ID, "/")[1]
+		hits[i].Href = fmt.Sprintf("/%s/question/%s/", domain, id)
+		body := strip.StripTags(fmt.Sprint(hit.Fields["Body"]))
+		summarLen := 140
+		if len(body) <= 140 {
+			summarLen = len(body)
+		}
+		hits[i].Summary = body[:summarLen]
+	}
+
+	h.searchTemplate.Execute(w, SearchResults{
+		Results: hits,
+		Query:   r.URL.Query().Get("q"),
+	})
+}
+
+func (h *WebServer) questionHandler(w http.ResponseWriter, domain string, questionID string) {
 	fmt.Println("domain:", domain, "id:", questionID)
 
-	p, err := h.loadPage(domain, questionID)
+	p, err := h.loadPage(domain + "/" + questionID)
 	if err != nil {
 		log.Println("error loading page data:", err)
 		http.Error(w, err.Error(), 404)
@@ -92,26 +160,25 @@ func (h *WebServer) assetHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (h *WebServer) loadPage(domain string, id string) (*sofp.Question, error) {
-	store, ok := h.streamStores[domain]
-	if !ok {
-		return nil, fmt.Errorf("domain not found")
-	}
-
-	deltas, err := store.GetStreamDeltas(domain, id)
+func (h *WebServer) loadPage(id string) (*sofp.Question, error) {
+	deltas, err := h.streamStore.GetStreamDeltas(id)
 	if err != nil {
 		return nil, err
 	}
+
+	return DeltasToQuestion(deltas)
+}
+
+func DeltasToQuestion(deltas []*sofp.Row) (*sofp.Question, error) {
 	question := &sofp.Question{
 		Body: template.HTML("under construction"),
 	}
 
 	for i := range deltas {
-		err = question.AppendRow(deltas[i])
+		err := question.AppendRow(deltas[i])
 		if err != nil {
 			return nil, err
 		}
 	}
-
 	return question, nil
 }

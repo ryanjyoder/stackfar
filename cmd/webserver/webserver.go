@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ryanjyoder/stackfar"
@@ -38,14 +39,14 @@ func main() {
 	}
 
 	sites := strings.Split(sitesStr, ",")
-	stores, err := stackfar.NewStores(storageDir, sites)
+	store, err := stackfar.NewStreamStore(filepath.Join(storageDir, "store"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	go stackfar.LoadStores(stores, streamsDir)
+	go stackfar.LoadStores(store, streamsDir, sites)
 
-	webserver, err := stackfar.NewWebServer(stores, templateDir, ":"+listenPort)
+	webserver, err := stackfar.NewWebServer(store, templateDir, ":"+listenPort)
 	if err != nil {
 		log.Fatal("failed to create handler:", err)
 	}

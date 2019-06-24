@@ -3,14 +3,17 @@ package stackfar
 import (
 	"database/sql"
 	"encoding/json"
+	"os"
 	"path/filepath"
 
+	"github.com/blevesearch/bleve"
 	sqlite3 "github.com/mattn/go-sqlite3"
 	"github.com/ryanjyoder/sofp"
 )
 
 type StreamStore struct {
-	db *sql.DB
+	db    *sql.DB
+	index bleve.Index
 }
 
 type Delta interface {
@@ -29,24 +32,18 @@ var (
 		deltas(streamID)
 	`, `CREATE TABLE IF NOT EXISTS progress (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		task TEXT,
 		finished t TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		length INTEGER)`}
 )
 
-func NewStores(storageDir string, sites []string) (map[string]*StreamStore, error) {
-	stores := map[string]*StreamStore{}
-	for i := range sites {
-		filename := filepath.Join(storageDir, sites[i]+".sqlite")
-		store, err := NewStreamStore(filename)
-		if err != nil {
-			return stores, err
-		}
-		stores[sites[i]] = store
+func NewStreamStore(storeDir string) (*StreamStore, error) {
+	err := os.MkdirAll(storeDir, 0755)
+	if err != nil {
+		return nil, err
 	}
-	return stores, nil
-}
-
-func NewStreamStore(dbFilepath string) (*StreamStore, error) {
+	dbFilepath := filepath.Join(storeDir, "streams.sqlite")
+	indexDir := filepath.Join(storeDir, "index")
 	database, err := sql.Open("sqlite3", dbFilepath)
 	if err != nil {
 		return nil, err
@@ -62,15 +59,25 @@ func NewStreamStore(dbFilepath string) (*StreamStore, error) {
 			return nil, err
 		}
 	}
+	index, err := bleve.Open(indexDir)
+	if err != nil {
+		mapping := bleve.NewIndexMapping()
+		index, err = bleve.New(indexDir, mapping)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &StreamStore{
-		db: database,
+		db:    database,
+		index: index,
 	}, nil
 }
 
-func (w *StreamStore) Write(d Delta) error {
+// Write returns if the if the delta is new
+func (w *StreamStore) Write(d Delta) (bool, error) {
 	text, err := json.Marshal(d)
 	if err != nil {
-		return err
+		return false, err
 	}
 	_, err = w.db.Exec(`
 	INSERT INTO deltas
@@ -80,22 +87,22 @@ func (w *StreamStore) Write(d Delta) error {
 	`, d.GetID(), d.GetStreamID(), string(text))
 
 	if err == nil {
-		return nil
+		return true, nil // new delta inserted
 
 	}
 	if sqlErr, ok := err.(sqlite3.Error); ok {
 		if sqlErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey {
-			return nil
+			return false, nil // not new but no error
 		}
 	}
-	return err
+	return false, err
 
 }
 
-func (w *StreamStore) GetStreamDeltas(domain string, id string) ([]*sofp.Row, error) {
+func (w *StreamStore) GetStreamDeltas(id string) ([]*sofp.Row, error) {
 	rows, err := w.db.Query(`
 	SELECT msg FROM deltas WHERE streamID = ? order by ordering
-	`, domain+"/"+id)
+	`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -116,20 +123,47 @@ func (w *StreamStore) GetStreamDeltas(domain string, id string) ([]*sofp.Row, er
 	return deltas, nil
 }
 
-func (w *StreamStore) SetProgress(length int64) error {
+func (w *StreamStore) ListStreamIDs() (*sql.Rows, error) {
+	return w.db.Query(`
+	SELECT streamID FROM deltas group by streamID
+	`)
+}
+
+func (w *StreamStore) SetProgress(task string, checkpoint int64) error {
 	_, err := w.db.Exec(`
 	INSERT INTO progress
-		(length)
+		(task, length)
 	VALUES 
-		(?)
-	`, length)
+		(?, ?)
+	`, task, checkpoint)
 	return err
 
 }
 
-func (w *StreamStore) GetProgress() (int64, error) {
+func (w *StreamStore) GetProgress(task string) (int64, error) {
 	rows, err := w.db.Query(`
-	SELECT length FROM progress order by id desc limit 1
+	SELECT length FROM progress WHERE task = ? order by id desc limit 1
+	`, task)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var checkpoint int64
+	for rows.Next() {
+		err := rows.Scan(&checkpoint)
+		if err != nil {
+			return 0, err
+		}
+		return checkpoint, nil
+	}
+
+	return 0, nil
+}
+
+func (w *StreamStore) LastDelta() (int64, error) {
+	rows, err := w.db.Query(`
+	SELECT max(ordering) FROM deltas
 	`)
 	if err != nil {
 		return 0, err
@@ -146,4 +180,17 @@ func (w *StreamStore) GetProgress() (int64, error) {
 	}
 
 	return 0, nil
+}
+
+func (s *StreamStore) Index(id string, doc interface{}) error {
+	return s.index.Index(id, doc)
+}
+
+func (s *StreamStore) Search(queryStr string) (*bleve.SearchResult, error) {
+	query := bleve.NewQueryStringQuery(queryStr)
+
+	searchRequest := bleve.NewSearchRequest(query)
+	searchRequest.Fields = []string{"Title", "Body"}
+	searchResult, err := s.index.Search(searchRequest)
+	return searchResult, err
 }
