@@ -5,57 +5,46 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
 func LoadStores(store *StreamStore, streamsDir string, sites []string) error {
 
+	storedID := NewDedupQueue(10000)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := indexStore(store, storedID)
+		if err != nil {
+			log.Println("error indexing:", err)
+			return
+		}
+	}()
+
 	changes := 0
 	for _, domain := range sites {
 
 		streamFile := filepath.Join(streamsDir, domain, "unified-stream")
-		newChanges, err := loadStore(store, domain, streamFile)
+		newChanges, err := loadStore(store, domain, streamFile, storedID)
 		if err != nil {
 			log.Println("Error loading stream:", domain, err)
 		}
 		changes += newChanges
 	}
-
-	err := indexStore(store)
-	if err != nil {
-		log.Println("error indexing:", err)
-		return err
-	}
+	storedID.Done()
+	wg.Wait()
 
 	return nil
 }
 
-func indexStore(store *StreamStore) error {
+func indexStore(store *StreamStore, storedID *DedupQueue) error {
 	fmt.Println("begining indexing")
-	checkpoint, err := store.GetProgress("index")
-	if err != nil {
-		return err
-	}
-	maxID, err := store.LastDelta()
-	if err != nil {
-		return err
-	}
-	fmt.Println("last checkpoint", checkpoint, "/", maxID)
-	if maxID == checkpoint {
-		log.Println("no indexing needed:", checkpoint, "/", maxID)
-		// finished indexing already
-		return nil
-	}
 
-	rows, err := store.ListStreamIDs()
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		id := ""
-		rows.Scan(&id)
+	id, ok := storedID.Dequeue()
+	for ok {
+		fmt.Println("indexing:", id)
 		deltas, err := store.GetStreamDeltas(id)
 		if err != nil {
 			return err
@@ -65,13 +54,14 @@ func indexStore(store *StreamStore) error {
 			return nil
 		}
 		store.Index(id, question)
+
+		id, ok = storedID.Dequeue()
 	}
-	store.SetProgress("index", maxID)
 	fmt.Println("indexing finished")
 	return nil
 }
 
-func loadStore(writer *StreamStore, domain string, streamFile string) (int, error) {
+func loadStore(writer *StreamStore, domain string, streamFile string, storedID *DedupQueue) (int, error) {
 
 	fileinfo, err := os.Stat(streamFile)
 	for err != nil {
@@ -103,6 +93,7 @@ func loadStore(writer *StreamStore, domain string, streamFile string) (int, erro
 		new, err := writer.Write(row)
 		if err == nil && new {
 			changes++
+			storedID.Queue(row.StreamID)
 		}
 		row, err = reader.Next()
 	}
