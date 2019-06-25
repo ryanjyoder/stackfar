@@ -112,8 +112,11 @@ func (w *StreamStore) GetStreamDeltas(id string) ([]*sofp.Row, error) {
 	for rows.Next() {
 		msg := ""
 		delta := &sofp.Row{}
-		rows.Scan(&msg)
-		err := json.Unmarshal([]byte(msg), delta)
+		err := rows.Scan(&msg)
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal([]byte(msg), delta)
 		if err != nil {
 			return nil, err
 		}
