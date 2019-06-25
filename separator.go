@@ -44,7 +44,6 @@ func indexStore(store *StreamStore, storedID *DedupQueue) error {
 
 	id, ok := storedID.Dequeue()
 	for ok {
-		fmt.Println("indexing:", id)
 		deltas, err := store.GetStreamDeltas(id)
 		if err != nil {
 			return err
