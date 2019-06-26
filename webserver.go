@@ -82,7 +82,7 @@ func (h *WebServer) viewHandler(w http.ResponseWriter, r *http.Request) {
 		h.assetHandler(w, r)
 		return
 
-	case "question":
+	case "questions":
 		h.questionHandler(w, domain, questionID)
 
 	case "search":
@@ -119,7 +119,7 @@ func (h *WebServer) searchHandler(w http.ResponseWriter, r *http.Request) {
 		hits[i].Title = fmt.Sprint(hit.Fields["Title"])
 		domain := strings.Split(hit.ID, "/")[0]
 		id := strings.Split(hit.ID, "/")[1]
-		hits[i].Href = fmt.Sprintf("/%s/question/%s/", domain, id)
+		hits[i].Href = fmt.Sprintf("/%s/questions/%s/", domain, id)
 		body := strip.StripTags(fmt.Sprint(hit.Fields["Body"]))
 		summarLen := 140
 		if len(body) <= 140 {
@@ -135,7 +135,7 @@ func (h *WebServer) searchHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WebServer) questionHandler(w http.ResponseWriter, domain string, questionID string) {
-	fmt.Println("domain:", domain, "id:", questionID)
+	//fmt.Println("domain:", domain, "id:", questionID)
 
 	p, err := h.loadPage(domain + "/" + questionID)
 	if err != nil {
