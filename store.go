@@ -74,12 +74,12 @@ func NewStreamStore(storeDir string) (*StreamStore, error) {
 }
 
 // Write returns if the if the delta is new
-func (w *StreamStore) Write(d Delta) (bool, error) {
+func WriteDeltaToDB(d Delta, tx *sql.Tx) (bool, error) {
 	text, err := json.Marshal(d)
 	if err != nil {
 		return false, err
 	}
-	_, err = w.db.Exec(`
+	_, err = tx.Exec(`
 	INSERT INTO deltas
 		(id, streamID, msg)
 	VALUES 
@@ -183,6 +183,10 @@ func (w *StreamStore) LastDelta() (int64, error) {
 	}
 
 	return 0, nil
+}
+
+func (w *StreamStore) Begin() (*sql.Tx, error) {
+	return w.db.Begin()
 }
 
 func (s *StreamStore) Index(id string, doc interface{}) error {

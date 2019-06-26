@@ -5,45 +5,43 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 )
 
 func LoadStores(store *StreamStore, streamsDir string, sites []string) error {
 
-	storedID := NewDedupQueue(10000)
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		err := indexStore(store, storedID)
-		if err != nil {
-			log.Println("error indexing:", err)
-			return
-		}
-	}()
-
 	changes := 0
 	for _, domain := range sites {
-
 		streamFile := filepath.Join(streamsDir, domain, "unified-stream")
-		newChanges, err := loadStore(store, domain, streamFile, storedID)
+		newChanges, err := loadStore(store, domain, streamFile)
 		if err != nil {
 			log.Println("Error loading stream:", domain, err)
 		}
 		changes += newChanges
 	}
-	storedID.Done()
-	wg.Wait()
+
+	err := indexStore(store)
+	if err != nil {
+		log.Println("error indexing:", err)
+		return err
+	}
 
 	return nil
 }
 
-func indexStore(store *StreamStore, storedID *DedupQueue) error {
+func indexStore(store *StreamStore) error {
 	fmt.Println("begining indexing")
+	rows, err := store.ListStreamIDs()
+	if err != nil {
+		return err
+	}
 
-	id, ok := storedID.Dequeue()
-	for ok {
+	for rows.Next() {
+		id := ""
+		err := rows.Scan(&id)
+		if err != nil {
+			return err
+		}
 		deltas, err := store.GetStreamDeltas(id)
 		if err != nil {
 			return err
@@ -53,14 +51,12 @@ func indexStore(store *StreamStore, storedID *DedupQueue) error {
 			return nil
 		}
 		store.Index(id, question)
-
-		id, ok = storedID.Dequeue()
 	}
 	fmt.Println("indexing finished")
 	return nil
 }
 
-func loadStore(writer *StreamStore, domain string, streamFile string, storedID *DedupQueue) (int, error) {
+func loadStore(writer *StreamStore, domain string, streamFile string) (int, error) {
 
 	fileinfo, err := os.Stat(streamFile)
 	for err != nil {
@@ -87,15 +83,21 @@ func loadStore(writer *StreamStore, domain string, streamFile string, storedID *
 	}
 
 	changes := 0
+	tx, err := writer.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
 	row, err := reader.Next()
 	for row != nil && err == nil {
-		new, err := writer.Write(row)
+		new, err := WriteDeltaToDB(row, tx)
 		if err == nil && new {
 			changes++
-			storedID.Queue(row.StreamID)
 		}
 		row, err = reader.Next()
 	}
+	tx.Commit()
 
 	return changes, writer.SetProgress(domain, fileinfo.Size())
 
