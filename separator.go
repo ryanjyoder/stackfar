@@ -36,11 +36,15 @@ func indexStore(store *StreamStore) error {
 		return err
 	}
 
+	n := 0
 	for rows.Next() {
 		id := ""
 		err := rows.Scan(&id)
 		if err != nil {
 			return err
+		}
+		if n%1000 == 0 {
+			fmt.Println("indesing doc #:", n, id)
 		}
 		deltas, err := store.GetStreamDeltas(id)
 		if err != nil {
