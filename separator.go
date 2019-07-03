@@ -44,7 +44,7 @@ func indexStore(store *StreamStore) error {
 			return err
 		}
 		if n%1000 == 0 {
-			fmt.Println("indesing doc #:", n, id)
+			fmt.Println("indexing doc #:", n, id)
 		}
 		deltas, err := store.GetStreamDeltas(id)
 		if err != nil {
@@ -55,6 +55,7 @@ func indexStore(store *StreamStore) error {
 			return nil
 		}
 		store.Index(id, question)
+		n++
 	}
 	fmt.Println("indexing finished")
 	return nil
