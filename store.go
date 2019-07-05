@@ -11,6 +11,7 @@ import (
 	"github.com/ryanjyoder/sofp"
 )
 
+// StreamStore stores stream data in a sqlite db
 type StreamStore struct {
 	db    *sql.DB
 	index bleve.Index
