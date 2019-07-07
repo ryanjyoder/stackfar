@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/blevesearch/bleve"
+	"github.com/blevesearch/bleve/mapping"
 	sqlite3 "github.com/mattn/go-sqlite3"
 	"github.com/ryanjyoder/sofp"
 )
@@ -59,18 +60,42 @@ func NewStreamStore(storeDir string) (*StreamStore, error) {
 			return nil, err
 		}
 	}
+	index, err := createIndex(indexDir)
+	if err != nil {
+		return nil, err
+	}
+
+	return &StreamStore{
+		db:    database,
+		index: index,
+	}, nil
+}
+
+func createIndex(indexDir string) (bleve.Index, error) {
 	index, err := bleve.Open(indexDir)
 	if err != nil {
-		mapping := bleve.NewIndexMapping()
+		mapping := defaultMapping()
 		index, err = bleve.New(indexDir, mapping)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return &StreamStore{
-		db:    database,
-		index: index,
-	}, nil
+	return index, err
+}
+
+func defaultMapping() *mapping.IndexMappingImpl {
+	questionMapping := bleve.NewDocumentMapping()
+	noStoreMapping := bleve.NewTextFieldMapping()
+	noStoreMapping.Store = false
+	questionMapping.AddFieldMappingsAt("_default", noStoreMapping)
+
+	storeMapping := bleve.NewTextFieldMapping()
+	storeMapping.Store = true
+	questionMapping.AddFieldMappingsAt("Body", storeMapping)
+
+	indexMapping := bleve.NewIndexMapping()
+	indexMapping.AddDocumentMapping("_default", questionMapping)
+	return indexMapping
 }
 
 // Write returns if the if the delta is new
